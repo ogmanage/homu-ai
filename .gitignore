@@ -1,0 +1,12 @@
+.streamlit/secrets.toml
+.env
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.log
+.DS_Store
+*.tmp
