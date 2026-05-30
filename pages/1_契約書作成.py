@@ -154,32 +154,55 @@ can_go = bool(party_a and party_b)
 if not can_go:
     st.caption("※ 甲・乙の会社名を入力すると生成できます")
 
-gen_btn = st.button(f"✨  {contract_type_key}を生成する", type="primary", disabled=not can_go)
-
-# ─── 生成処理 ─────────────────────────────────────────────────────────────────
+if "confirm_pending" not in st.session_state:
+    st.session_state["confirm_pending"] = False
 if "draft" not in st.session_state:
     st.session_state["draft"] = None
 
-if gen_btn and can_go:
-    params = {
-        "甲（委託者/発注者）": party_a, "乙（受託者/受注者）": party_b,
-        "契約開始日": str(start_date), "契約終了日": str(end_date),
-        "業務内容": business_content, "契約金額": contract_amount,
-        "支払条件": payment_terms,
-        "管轄裁判所": "東京地方裁判所", "準拠法": "日本法",
-        "特記事項": special_notes,
-    }
-    with st.spinner("AIが契約書を生成中です... （20〜40秒かかります）"):
-        try:
-            st.session_state["draft"] = call_claude_structured(
-                system=DRAFT_SYSTEM_PROMPT,
-                user=build_draft_prompt(contract_type_key, params),
-                model_cls=ContractDraft, max_tokens=8192,
-            )
-        except ValueError as e:
-            st.error("生成に失敗しました。もう一度お試しください。")
-            with st.expander("エラー詳細"):
-                st.code(str(e))
+if st.button(f"✨  {contract_type_key}を生成する", type="primary", disabled=not can_go):
+    st.session_state["confirm_pending"] = True
+    st.rerun()
+
+# ─── 確認ダイアログ ────────────────────────────────────────────────────────────
+if st.session_state["confirm_pending"]:
+    st.markdown("---")
+    st.markdown("### 以下の内容で生成します。よろしいですか？")
+    st.markdown(f"""
+| 項目 | 内容 |
+|---|---|
+| 契約書種別 | {contract_type_key} |
+| 甲 | {party_a} |
+| 乙 | {party_b} |
+| 期間 | {start_date} 〜 {end_date} |
+""")
+    col_yes, col_no, _ = st.columns([2, 2, 4])
+    with col_yes:
+        if st.button("✅ はい、生成する", type="primary", use_container_width=True):
+            st.session_state["confirm_pending"] = False
+            params = {
+                "甲（委託者/発注者）": party_a, "乙（受託者/受注者）": party_b,
+                "契約開始日": str(start_date), "契約終了日": str(end_date),
+                "業務内容": business_content, "契約金額": contract_amount,
+                "支払条件": payment_terms,
+                "管轄裁判所": "東京地方裁判所", "準拠法": "日本法",
+                "特記事項": special_notes,
+            }
+            with st.spinner("AIが契約書を生成中です... （20〜40秒かかります）"):
+                try:
+                    st.session_state["draft"] = call_claude_structured(
+                        system=DRAFT_SYSTEM_PROMPT,
+                        user=build_draft_prompt(contract_type_key, params),
+                        model_cls=ContractDraft, max_tokens=8192,
+                    )
+                except ValueError as e:
+                    st.error("生成に失敗しました。もう一度お試しください。")
+                    with st.expander("エラー詳細"):
+                        st.code(str(e))
+            st.rerun()
+    with col_no:
+        if st.button("❌ キャンセル", use_container_width=True):
+            st.session_state["confirm_pending"] = False
+            st.rerun()
 
 result: ContractDraft | None = st.session_state["draft"]
 
