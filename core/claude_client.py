@@ -38,12 +38,39 @@ def call_claude(system: str, user: str, max_tokens: int = 4096) -> str:
     return response.choices[0].message.content
 
 
+def _fix_unescaped_newlines(text: str) -> str:
+    """Escape literal newlines inside JSON string values."""
+    result = []
+    in_string = False
+    escape_next = False
+    for ch in text:
+        if escape_next:
+            result.append(ch)
+            escape_next = False
+        elif ch == "\\" and in_string:
+            result.append(ch)
+            escape_next = True
+        elif ch == '"':
+            result.append(ch)
+            in_string = not in_string
+        elif in_string and ch == "\n":
+            result.append("\\n")
+        elif in_string and ch == "\r":
+            result.append("\\r")
+        elif in_string and ch == "\t":
+            result.append("\\t")
+        else:
+            result.append(ch)
+    return "".join(result)
+
+
 def extract_json(raw: str) -> dict:
     """
-    Extract JSON from response using a 3-step strategy:
+    Extract JSON from response using a 4-step strategy:
     1. Direct json.loads (clean JSON response)
     2. Strip ```json ... ``` fences
     3. Find first { to last } substring
+    4. Fix unescaped newlines inside string values, then retry steps 1-3
     """
     stripped = raw.strip()
 
@@ -67,6 +94,28 @@ def extract_json(raw: str) -> dict:
     if start != -1 and end != -1 and end > start:
         try:
             return json.loads(stripped[start : end + 1])
+        except json.JSONDecodeError:
+            pass
+
+    # Strategy 4: fix unescaped newlines, then retry strategies 1-3
+    fixed = _fix_unescaped_newlines(stripped)
+    try:
+        return json.loads(fixed)
+    except json.JSONDecodeError:
+        pass
+
+    m2 = re.search(r"```(?:json)?\s*([\s\S]*?)```", fixed)
+    if m2:
+        try:
+            return json.loads(m2.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    start2 = fixed.find("{")
+    end2 = fixed.rfind("}")
+    if start2 != -1 and end2 != -1 and end2 > start2:
+        try:
+            return json.loads(fixed[start2 : end2 + 1])
         except json.JSONDecodeError:
             pass
 
