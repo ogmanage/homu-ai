@@ -4,7 +4,7 @@ from core.auth import require_auth
 from core.claude_client import call_claude_structured
 from core.doc_generator import draft_to_docx, draft_to_pdf
 from core.models import ContractDraft
-from core.prompts import DRAFT_SYSTEM_PROMPT, build_draft_prompt
+from core.prompts import DRAFT_SYSTEM_PROMPT, build_draft_prompt, REVISE_SYSTEM_PROMPT, build_revise_prompt
 
 st.set_page_config(page_title="契約書作成 | 法務AI", page_icon="📝", layout="wide")
 require_auth()
@@ -216,3 +216,29 @@ if result:
     st.subheader("契約書プレビュー")
     with st.container(border=True):
         st.markdown(result.body_markdown)
+
+    # ─── 修正・再生成 ─────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("✏️ 修正して再生成")
+    st.caption("気になる箇所を日本語で指示すると、AIが修正した契約書を再生成します。")
+    revision_input = st.text_area(
+        "修正指示",
+        label_visibility="collapsed",
+        height=100,
+        placeholder="例：第3条の支払条件を「納品後2週間以内」に変更してください。また第7条に著作権の二次利用禁止を追記してください。",
+        key="revision_input",
+    )
+    if st.button("✏️ この内容で修正する", type="primary", disabled=not bool(revision_input)):
+        with st.spinner("AIが契約書を修正中です..."):
+            try:
+                st.session_state["draft"] = call_claude_structured(
+                    system=REVISE_SYSTEM_PROMPT,
+                    user=build_revise_prompt(result.body_markdown, revision_input),
+                    model_cls=ContractDraft,
+                    max_tokens=8192,
+                )
+                st.rerun()
+            except ValueError as e:
+                st.error("修正に失敗しました。もう一度お試しください。")
+                with st.expander("エラー詳細"):
+                    st.code(str(e))
