@@ -1,4 +1,4 @@
-"""Google Gemini API wrapper with robust JSON extraction."""
+"""Groq API wrapper with robust JSON extraction."""
 
 from __future__ import annotations
 
@@ -8,40 +8,39 @@ import re
 import streamlit as st
 from pydantic import BaseModel, ValidationError
 
-MODEL = "gemini-2.0-flash"
+MODEL = "llama-3.3-70b-versatile"
 
 
 @st.cache_resource
 def get_client():
-    """Lazy-init Gemini client using GEMINI_API_KEY from st.secrets."""
-    from google import genai
+    """Lazy-init Groq client using GROQ_API_KEY from st.secrets."""
+    from groq import Groq
 
-    api_key = st.secrets.get("GEMINI_API_KEY", "")
-    if not api_key or "ここに" in api_key:
-        st.error("GEMINI_API_KEYが設定されていません。.streamlit/secrets.toml を確認してください。")
+    api_key = st.secrets.get("GROQ_API_KEY", "")
+    if not api_key:
+        st.error("GROQ_API_KEYが設定されていません。.streamlit/secrets.toml を確認してください。")
         st.stop()
-    return genai.Client(api_key=api_key)
+    return Groq(api_key=api_key)
 
 
 def call_claude(system: str, user: str, max_tokens: int = 4096) -> str:
-    """Call Gemini and return the raw text content."""
-    from google.genai import types
-
+    """Call Groq and return the raw text content."""
     client = get_client()
-    response = client.models.generate_content(
+    response = client.chat.completions.create(
         model=MODEL,
-        contents=f"{system}\n\n{user}",
-        config=types.GenerateContentConfig(
-            max_output_tokens=max_tokens,
-            temperature=0.2,
-        ),
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        max_tokens=max_tokens,
+        temperature=0.2,
     )
-    return response.text
+    return response.choices[0].message.content
 
 
 def extract_json(raw: str) -> dict:
     """
-    Extract JSON from Gemini's response using a 3-step strategy:
+    Extract JSON from response using a 3-step strategy:
     1. Direct json.loads (clean JSON response)
     2. Strip ```json ... ``` fences
     3. Find first { to last } substring
@@ -84,7 +83,7 @@ def call_claude_structured(
     max_tokens: int = 4096,
 ) -> BaseModel:
     """
-    Call Gemini, extract JSON, validate with Pydantic model.
+    Call Groq, extract JSON, validate with Pydantic model.
     Raises ValueError on JSON parse failure or ValidationError on schema mismatch.
     """
     raw = call_claude(system, user, max_tokens)
