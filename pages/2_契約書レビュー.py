@@ -123,7 +123,10 @@ if start_btn and uploaded:
                       "低": "background-color:#DCFCE7;color:#166534;font-weight:bold"}
             return colors.get(val, "")
 
-        styled = df.style.applymap(_style_risk, subset=["リスクレベル"])
+        try:
+            styled = df.style.map(_style_risk, subset=["リスクレベル"])
+        except AttributeError:
+            styled = df.style.applymap(_style_risk, subset=["リスクレベル"])
         st.dataframe(styled, use_container_width=True, hide_index=True)
     else:
         st.info("リスク項目は検出されませんでした。")
