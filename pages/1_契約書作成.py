@@ -216,4 +216,3 @@ if result:
     st.subheader("契約書プレビュー")
     with st.container(border=True):
         st.markdown(result.body_markdown)
-    st.caption("⚠️ 本契約書はAIによる参考ひな形です。締結前には必ず弁護士等の法律専門家にご確認ください。")
