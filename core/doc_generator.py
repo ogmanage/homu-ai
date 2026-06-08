@@ -10,7 +10,7 @@ import sys
 from .models import ContractDraft
 
 # ── 禁則処理：行頭に来てはいけない文字 ──────────────────────────────────────
-_KINSOKU_CHARS = "。、，．・：；？！）〕］｝〉》」』】〙〗〟'"｠»‐〜"
+_KINSOKU_CHARS = "。、，．・：；？！）〕］｝〉》」』】〙〗〟‘’“”｠»‐〜"
 
 def _fix_kinsoku_linebreaks(text: str) -> str:
     """行頭禁則文字（。、など）が単独で行頭に来ている場合、前の行に結合する。"""
