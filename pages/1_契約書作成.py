@@ -2,7 +2,7 @@ import streamlit as st
 
 from core.auth import require_auth
 from core.claude_client import call_claude_structured
-from core.doc_generator import draft_to_docx, draft_to_pdf
+from core.doc_generator import draft_to_docx, draft_to_pdf, draft_to_png
 from core.models import ContractDraft
 from core.prompts import DRAFT_SYSTEM_PROMPT, build_draft_prompt, REVISE_SYSTEM_PROMPT, build_revise_prompt
 
@@ -210,22 +210,49 @@ if result:
     st.divider()
     st.success(f"「{result.title}」の生成が完了しました。")
 
-    dl1, dl2, _, rst = st.columns([2, 2, 3, 1])
     safe = result.title.replace(" ", "_").replace("/", "-")
-    with dl1:
+
+    # ─── 出力形式セレクター ───────────────────────────────────────────────
+    fmt_col, dl_col, _, rst_col = st.columns([3, 3, 2, 1])
+    with fmt_col:
+        fmt = st.radio(
+            "出力形式",
+            ["📄 Word (.docx)", "📑 PDF", "🖼️ PNG（Canva用）"],
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+    with dl_col:
         try:
-            st.download_button("📄 Wordダウンロード", draft_to_docx(result), f"{safe}.docx",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                use_container_width=True)
+            if fmt == "📄 Word (.docx)":
+                st.download_button(
+                    "⬇️ Wordダウンロード",
+                    draft_to_docx(result),
+                    f"{safe}.docx",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True, type="primary",
+                )
+            elif fmt == "📑 PDF":
+                st.download_button(
+                    "⬇️ PDFダウンロード",
+                    draft_to_pdf(result),
+                    f"{safe}.pdf",
+                    "application/pdf",
+                    use_container_width=True, type="primary",
+                )
+            else:
+                with st.spinner("PNG生成中..."):
+                    png_data = draft_to_png(result)
+                st.download_button(
+                    "⬇️ PNG（Canva用）",
+                    png_data,
+                    f"{safe}.png",
+                    "image/png",
+                    use_container_width=True, type="primary",
+                )
+                st.caption("CanvaにアップロードしてデザインにそのままGo 🎨")
         except Exception as e:
-            st.error(f"Word生成エラー: {e}")
-    with dl2:
-        try:
-            st.download_button("📑 PDFダウンロード", draft_to_pdf(result), f"{safe}.pdf",
-                "application/pdf", use_container_width=True)
-        except Exception:
-            st.warning("PDF生成失敗（Wordは正常）")
-    with rst:
+            st.error(f"生成エラー: {e}")
+    with rst_col:
         if st.button("🔄 再生成"):
             st.session_state["draft"] = None
             st.rerun()
