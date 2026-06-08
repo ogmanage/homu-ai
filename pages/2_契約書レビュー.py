@@ -2,7 +2,7 @@ import streamlit as st
 
 from core.auth import require_auth
 from core.claude_client import call_claude_structured
-from core.doc_generator import draft_to_docx, draft_to_pdf, draft_to_png
+from core.doc_generator import draft_to_docx, draft_to_pdf, draft_to_png, preprocess_markdown
 from core.file_parser import parse_uploaded_file
 from core.models import ContractDraft, ReviewResult, RiskLevel
 from core.prompts import (
@@ -304,7 +304,7 @@ if result:
         st.markdown("---")
         st.subheader("修正版プレビュー")
         with st.container(border=True):
-            st.markdown(revised.body_markdown)
+            st.markdown(preprocess_markdown(revised.body_markdown))
 
         # さらに修正
         st.markdown("---")

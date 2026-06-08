@@ -25,6 +25,33 @@ def _fix_kinsoku_linebreaks(text: str) -> str:
     return "\n".join(result)
 
 
+_SIG_STARTERS = ("甲：", "乙：", "甲:", "乙:")
+
+def _fix_signature_newlines(text: str) -> str:
+    """署名欄の甲・乙行が同一段落に結合されないよう、前後に空行を挿入する。"""
+    lines = text.split("\n")
+    result: list[str] = []
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        is_sig = any(stripped.startswith(s) for s in _SIG_STARTERS)
+        if is_sig:
+            if result and result[-1].strip() != "":
+                result.append("")
+            result.append(line)
+            if i + 1 < len(lines) and lines[i + 1].strip() != "":
+                result.append("")
+        else:
+            result.append(line)
+    return "\n".join(result)
+
+
+def preprocess_markdown(text: str) -> str:
+    """全出力前に適用する共通前処理（禁則処理 + 署名欄改行保証）。"""
+    text = _fix_kinsoku_linebreaks(text)
+    text = _fix_signature_newlines(text)
+    return text
+
+
 def _strip_markdown_bold(text: str) -> str:
     return re.sub(r"\*\*(.+?)\*\*", r"\1", text)
 
@@ -85,7 +112,7 @@ def draft_to_docx(draft: ContractDraft) -> bytes:
             el.set(qn("w:val"), val)
             pPr.append(el)
 
-    body = _fix_kinsoku_linebreaks(draft.body_markdown)
+    body = preprocess_markdown(draft.body_markdown)
 
     for line in body.split("\n"):
         if line.startswith("# "):
@@ -174,7 +201,7 @@ def _pdf_via_reportlab(draft: ContractDraft) -> bytes:
     bd = ParagraphStyle("Body", parent=styles["Normal"], fontName=F, fontSize=10, leading=18, spaceAfter=4)
     nt = ParagraphStyle("Note", parent=styles["Normal"], fontName=F, fontSize=9, textColor=(0.4, 0.4, 0.4))
 
-    body = _fix_kinsoku_linebreaks(draft.body_markdown)
+    body = preprocess_markdown(draft.body_markdown)
     story = []
     for line in body.split("\n"):
         clean = _strip_markdown_bold(line)
@@ -286,7 +313,7 @@ def draft_to_png(draft: ContractDraft) -> bytes:
         y += 6
 
     # ── 本文レンダリング ───────────────────────────────────────────────────
-    body = _fix_kinsoku_linebreaks(draft.body_markdown)
+    body = preprocess_markdown(draft.body_markdown)
     for line in body.split("\n"):
         clean = _strip_markdown_bold(line)
         if line.startswith("# "):

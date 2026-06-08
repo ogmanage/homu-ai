@@ -2,7 +2,7 @@ import streamlit as st
 
 from core.auth import require_auth
 from core.claude_client import call_claude_structured
-from core.doc_generator import draft_to_docx, draft_to_pdf, draft_to_png
+from core.doc_generator import draft_to_docx, draft_to_pdf, draft_to_png, preprocess_markdown
 from core.models import ContractDraft
 from core.prompts import DRAFT_SYSTEM_PROMPT, build_draft_prompt, REVISE_SYSTEM_PROMPT, build_revise_prompt
 
@@ -265,7 +265,7 @@ if result:
     st.markdown("---")
     st.subheader("契約書プレビュー")
     with st.container(border=True):
-        st.markdown(result.body_markdown)
+        st.markdown(preprocess_markdown(result.body_markdown))
 
     # ─── 修正・再生成 ─────────────────────────────────────────────────────────
     st.markdown("---")
