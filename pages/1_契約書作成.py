@@ -2,7 +2,7 @@ import streamlit as st
 
 from core.auth import require_auth
 from core.claude_client import call_claude_structured
-from core.doc_generator import draft_to_docx, draft_to_pdf, draft_to_png, preprocess_markdown
+from core.doc_generator import draft_to_docx, draft_to_pdf, preprocess_markdown
 from core.models import ContractDraft
 from core.prompts import DRAFT_SYSTEM_PROMPT, build_draft_prompt, REVISE_SYSTEM_PROMPT, build_revise_prompt
 
@@ -206,55 +206,57 @@ if st.session_state["confirm_pending"]:
 
 result: ContractDraft | None = st.session_state["draft"]
 
+if "edited_body" not in st.session_state:
+    st.session_state["edited_body"] = ""
+
 if result:
+    # 新規生成時はテキストを初期化
+    if st.session_state.get("_last_draft_title") != result.title:
+        st.session_state["edited_body"] = result.body_markdown
+        st.session_state["_last_draft_title"] = result.title
+
     st.divider()
     st.success(f"「{result.title}」の生成が完了しました。")
 
     safe = result.title.replace(" ", "_").replace("/", "-")
 
-    # ─── 出力形式セレクター ───────────────────────────────────────────────
-    fmt_col, dl_col, _, rst_col = st.columns([3, 3, 2, 1])
-    with fmt_col:
-        fmt = st.radio(
-            "出力形式",
-            ["📄 Word (.docx)", "📑 PDF", "🖼️ PNG（Canva用）"],
-            horizontal=True,
-            label_visibility="collapsed",
+    # ─── ダウンロードボタン ───────────────────────────────────────────────
+    dl_word_col, dl_pdf_col, _, rst_col = st.columns([3, 3, 2, 1])
+
+    # ダウンロード用に編集済み本文を使うダミーモデルを生成
+    def _build_download_draft() -> ContractDraft:
+        return ContractDraft(
+            title=result.title,
+            body_markdown=st.session_state["edited_body"],
+            notes=result.notes,
         )
-    with dl_col:
+
+    with dl_word_col:
         try:
-            if fmt == "📄 Word (.docx)":
-                st.download_button(
-                    "⬇️ Wordダウンロード",
-                    draft_to_docx(result),
-                    f"{safe}.docx",
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True, type="primary",
-                )
-            elif fmt == "📑 PDF":
-                st.download_button(
-                    "⬇️ PDFダウンロード",
-                    draft_to_pdf(result),
-                    f"{safe}.pdf",
-                    "application/pdf",
-                    use_container_width=True, type="primary",
-                )
-            else:
-                with st.spinner("PNG生成中..."):
-                    png_data = draft_to_png(result)
-                st.download_button(
-                    "⬇️ PNG（Canva用）",
-                    png_data,
-                    f"{safe}.png",
-                    "image/png",
-                    use_container_width=True, type="primary",
-                )
-                st.caption("CanvaにアップロードしてデザインにそのままGo 🎨")
+            st.download_button(
+                "⬇️ Word ダウンロード",
+                draft_to_docx(_build_download_draft()),
+                f"{safe}.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True, type="primary",
+            )
         except Exception as e:
-            st.error(f"生成エラー: {e}")
+            st.error(f"Word生成エラー: {e}")
+    with dl_pdf_col:
+        try:
+            st.download_button(
+                "⬇️ PDF ダウンロード",
+                draft_to_pdf(_build_download_draft()),
+                f"{safe}.pdf",
+                "application/pdf",
+                use_container_width=True, type="primary",
+            )
+        except Exception as e:
+            st.error(f"PDF生成エラー: {e}")
     with rst_col:
         if st.button("🔄 再生成"):
             st.session_state["draft"] = None
+            st.session_state["edited_body"] = ""
             st.rerun()
 
     if result.notes:
@@ -262,14 +264,23 @@ if result:
         for note in result.notes:
             st.info(note)
 
+    # ─── 直接編集エリア ───────────────────────────────────────────────────
     st.markdown("---")
-    st.subheader("契約書プレビュー")
-    with st.container(border=True):
-        st.markdown(preprocess_markdown(result.body_markdown))
+    st.subheader("📝 契約書を編集")
+    st.caption("本文を直接編集できます。編集した内容でWord/PDFをダウンロードできます。")
+    edited = st.text_area(
+        "contract_body_edit",
+        value=st.session_state["edited_body"],
+        label_visibility="collapsed",
+        height=600,
+        key="contract_body_textarea",
+    )
+    if edited != st.session_state["edited_body"]:
+        st.session_state["edited_body"] = edited
 
-    # ─── 修正・再生成 ─────────────────────────────────────────────────────────
+    # ─── AIによる修正・再生成 ────────────────────────────────────────────
     st.markdown("---")
-    st.subheader("✏️ 修正して再生成")
+    st.subheader("✏️ AIで修正して再生成")
     st.caption("気になる箇所を日本語で指示すると、AIが修正した契約書を再生成します。")
     revision_input = st.text_area(
         "修正指示",
@@ -283,10 +294,11 @@ if result:
             try:
                 st.session_state["draft"] = call_claude_structured(
                     system=REVISE_SYSTEM_PROMPT,
-                    user=build_revise_prompt(result.body_markdown, revision_input),
+                    user=build_revise_prompt(st.session_state["edited_body"], revision_input),
                     model_cls=ContractDraft,
                     max_tokens=8192,
                 )
+                st.session_state["edited_body"] = ""
                 st.rerun()
             except ValueError as e:
                 st.error("修正に失敗しました。もう一度お試しください。")

@@ -2,7 +2,7 @@ import streamlit as st
 
 from core.auth import require_auth
 from core.claude_client import call_claude_structured
-from core.doc_generator import draft_to_docx, draft_to_pdf, draft_to_png, preprocess_markdown
+from core.doc_generator import draft_to_docx, draft_to_pdf, preprocess_markdown
 from core.file_parser import parse_uploaded_file
 from core.models import ContractDraft, ReviewResult, RiskLevel
 from core.prompts import (
@@ -38,6 +38,7 @@ for key, default in [
     ("review_contract_text", ""),
     ("revised_draft", None),
     ("auto_revision_text", ""),
+    ("review_edited_body", ""),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -247,53 +248,51 @@ if result:
     # ─── 修正版の表示 ────────────────────────────────────────────────────────
     revised: ContractDraft | None = st.session_state["revised_draft"]
     if revised:
+        # 新規生成時はテキストを初期化
+        if st.session_state.get("_last_revised_title") != revised.title + revised.body_markdown[:50]:
+            st.session_state["review_edited_body"] = revised.body_markdown
+            st.session_state["_last_revised_title"] = revised.title + revised.body_markdown[:50]
+
         st.divider()
         st.success(f"「{revised.title}」の修正版が生成されました。")
 
         safe = revised.title.replace(" ", "_").replace("/", "-")
-        fmt_col, dl_col, _, rst_col = st.columns([3, 3, 2, 1])
-        with fmt_col:
-            fmt_r = st.radio(
-                "出力形式",
-                ["📄 Word (.docx)", "📑 PDF", "🖼️ PNG（Canva用）"],
-                horizontal=True,
-                label_visibility="collapsed",
-                key="rev_fmt",
+
+        # ダウンロード用に編集済み本文を使うモデルを生成
+        def _build_rev_draft() -> ContractDraft:
+            return ContractDraft(
+                title=revised.title,
+                body_markdown=st.session_state["review_edited_body"],
+                notes=revised.notes,
             )
-        with dl_col:
+
+        dl_word_col, dl_pdf_col, _, rst_col = st.columns([3, 3, 2, 1])
+        with dl_word_col:
             try:
-                if fmt_r == "📄 Word (.docx)":
-                    st.download_button(
-                        "⬇️ Wordダウンロード",
-                        draft_to_docx(revised),
-                        f"{safe}_修正版.docx",
-                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        use_container_width=True, type="primary",
-                    )
-                elif fmt_r == "📑 PDF":
-                    st.download_button(
-                        "⬇️ PDFダウンロード",
-                        draft_to_pdf(revised),
-                        f"{safe}_修正版.pdf",
-                        "application/pdf",
-                        use_container_width=True, type="primary",
-                    )
-                else:
-                    with st.spinner("PNG生成中..."):
-                        png_data = draft_to_png(revised)
-                    st.download_button(
-                        "⬇️ PNG（Canva用）",
-                        png_data,
-                        f"{safe}_修正版.png",
-                        "image/png",
-                        use_container_width=True, type="primary",
-                    )
-                    st.caption("CanvaにアップロードしてデザインにそのままGo 🎨")
+                st.download_button(
+                    "⬇️ Word ダウンロード",
+                    draft_to_docx(_build_rev_draft()),
+                    f"{safe}_修正版.docx",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True, type="primary",
+                )
             except Exception as e:
-                st.error(f"生成エラー: {e}")
+                st.error(f"Word生成エラー: {e}")
+        with dl_pdf_col:
+            try:
+                st.download_button(
+                    "⬇️ PDF ダウンロード",
+                    draft_to_pdf(_build_rev_draft()),
+                    f"{safe}_修正版.pdf",
+                    "application/pdf",
+                    use_container_width=True, type="primary",
+                )
+            except Exception as e:
+                st.error(f"PDF生成エラー: {e}")
         with rst_col:
             if st.button("🔄 再生成"):
                 st.session_state["revised_draft"] = None
+                st.session_state["review_edited_body"] = ""
                 st.rerun()
 
         if revised.notes:
@@ -301,14 +300,23 @@ if result:
             for note in revised.notes:
                 st.info(note)
 
+        # ─── 直接編集エリア ───────────────────────────────────────────────
         st.markdown("---")
-        st.subheader("修正版プレビュー")
-        with st.container(border=True):
-            st.markdown(preprocess_markdown(revised.body_markdown))
+        st.subheader("📝 修正版を編集")
+        st.caption("本文を直接編集できます。編集した内容でWord/PDFをダウンロードできます。")
+        rev_edited = st.text_area(
+            "rev_body_edit",
+            value=st.session_state["review_edited_body"],
+            label_visibility="collapsed",
+            height=600,
+            key="review_body_textarea",
+        )
+        if rev_edited != st.session_state["review_edited_body"]:
+            st.session_state["review_edited_body"] = rev_edited
 
-        # さらに修正
+        # さらにAI修正
         st.markdown("---")
-        st.subheader("✏️ さらに修正する")
+        st.subheader("✏️ さらにAIで修正する")
         st.caption("修正版に対して追加の修正指示を出せます。")
         further_input = st.text_area(
             "追加修正指示",
@@ -322,10 +330,11 @@ if result:
                 try:
                     st.session_state["revised_draft"] = call_claude_structured(
                         system=REVISE_SYSTEM_PROMPT,
-                        user=build_revise_prompt(revised.body_markdown, further_input),
+                        user=build_revise_prompt(st.session_state["review_edited_body"], further_input),
                         model_cls=ContractDraft,
                         max_tokens=8192,
                     )
+                    st.session_state["review_edited_body"] = ""
                     st.rerun()
                 except ValueError as e:
                     st.error("修正に失敗しました。もう一度お試しください。")
