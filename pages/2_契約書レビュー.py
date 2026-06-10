@@ -254,6 +254,12 @@ if result:
             st.session_state["_last_revised_title"] = revised.title + revised.body_markdown[:50]
 
         st.divider()
+        _, rst_col = st.columns([8, 1])
+        with rst_col:
+            if st.button("🔄 再生成"):
+                st.session_state["revised_draft"] = None
+                st.session_state["review_edited_body"] = ""
+                st.rerun()
         st.success(f"「{revised.title}」の修正版が生成されました。")
 
         safe = revised.title.replace(" ", "_").replace("/", "-")
@@ -266,7 +272,26 @@ if result:
                 notes=revised.notes,
             )
 
-        dl_word_col, dl_pdf_col, _, rst_col = st.columns([3, 3, 2, 1])
+        if revised.notes:
+            for note in revised.notes:
+                st.info(note)
+
+        # ─── 直接編集エリア ───────────────────────────────────────────────
+        st.markdown("---")
+        st.subheader("📝 修正版を編集")
+        st.caption("本文を直接編集できます。編集した内容でWord/PDFをダウンロードできます。")
+        rev_edited = st.text_area(
+            "rev_body_edit",
+            value=st.session_state["review_edited_body"],
+            label_visibility="collapsed",
+            height=600,
+            key="review_body_textarea",
+        )
+        if rev_edited != st.session_state["review_edited_body"]:
+            st.session_state["review_edited_body"] = rev_edited
+
+        # ─── ダウンロードボタン（編集エリアの直下） ──────────────────────
+        dl_word_col, dl_pdf_col, _ = st.columns([3, 3, 3])
         with dl_word_col:
             try:
                 st.download_button(
@@ -289,30 +314,6 @@ if result:
                 )
             except Exception as e:
                 st.error(f"PDF生成エラー: {e}")
-        with rst_col:
-            if st.button("🔄 再生成"):
-                st.session_state["revised_draft"] = None
-                st.session_state["review_edited_body"] = ""
-                st.rerun()
-
-        if revised.notes:
-            st.markdown("---")
-            for note in revised.notes:
-                st.info(note)
-
-        # ─── 直接編集エリア ───────────────────────────────────────────────
-        st.markdown("---")
-        st.subheader("📝 修正版を編集")
-        st.caption("本文を直接編集できます。編集した内容でWord/PDFをダウンロードできます。")
-        rev_edited = st.text_area(
-            "rev_body_edit",
-            value=st.session_state["review_edited_body"],
-            label_visibility="collapsed",
-            height=600,
-            key="review_body_textarea",
-        )
-        if rev_edited != st.session_state["review_edited_body"]:
-            st.session_state["review_edited_body"] = rev_edited
 
         # さらにAI修正
         st.markdown("---")

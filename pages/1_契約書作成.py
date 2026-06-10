@@ -216,12 +216,15 @@ if result:
         st.session_state["_last_draft_title"] = result.title
 
     st.divider()
+    _, rst_col = st.columns([8, 1])
+    with rst_col:
+        if st.button("🔄 再生成"):
+            st.session_state["draft"] = None
+            st.session_state["edited_body"] = ""
+            st.rerun()
     st.success(f"「{result.title}」の生成が完了しました。")
 
     safe = result.title.replace(" ", "_").replace("/", "-")
-
-    # ─── ダウンロードボタン ───────────────────────────────────────────────
-    dl_word_col, dl_pdf_col, _, rst_col = st.columns([3, 3, 2, 1])
 
     # ダウンロード用に編集済み本文を使うダミーモデルを生成
     def _build_download_draft() -> ContractDraft:
@@ -231,6 +234,26 @@ if result:
             notes=result.notes,
         )
 
+    if result.notes:
+        for note in result.notes:
+            st.info(note)
+
+    # ─── 直接編集エリア ───────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("📝 契約書を編集")
+    st.caption("本文を直接編集できます。編集した内容でWord/PDFをダウンロードできます。")
+    edited = st.text_area(
+        "contract_body_edit",
+        value=st.session_state["edited_body"],
+        label_visibility="collapsed",
+        height=600,
+        key="contract_body_textarea",
+    )
+    if edited != st.session_state["edited_body"]:
+        st.session_state["edited_body"] = edited
+
+    # ─── ダウンロードボタン（編集エリアの直下） ──────────────────────────
+    dl_word_col, dl_pdf_col, _ = st.columns([3, 3, 3])
     with dl_word_col:
         try:
             st.download_button(
@@ -253,30 +276,6 @@ if result:
             )
         except Exception as e:
             st.error(f"PDF生成エラー: {e}")
-    with rst_col:
-        if st.button("🔄 再生成"):
-            st.session_state["draft"] = None
-            st.session_state["edited_body"] = ""
-            st.rerun()
-
-    if result.notes:
-        st.markdown("---")
-        for note in result.notes:
-            st.info(note)
-
-    # ─── 直接編集エリア ───────────────────────────────────────────────────
-    st.markdown("---")
-    st.subheader("📝 契約書を編集")
-    st.caption("本文を直接編集できます。編集した内容でWord/PDFをダウンロードできます。")
-    edited = st.text_area(
-        "contract_body_edit",
-        value=st.session_state["edited_body"],
-        label_visibility="collapsed",
-        height=600,
-        key="contract_body_textarea",
-    )
-    if edited != st.session_state["edited_body"]:
-        st.session_state["edited_body"] = edited
 
     # ─── AIによる修正・再生成 ────────────────────────────────────────────
     st.markdown("---")
