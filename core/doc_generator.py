@@ -26,18 +26,33 @@ def _fix_kinsoku_linebreaks(text: str) -> str:
 
 
 _SIG_STARTERS = ("甲：", "乙：", "甲:", "乙:")
+_SIG_REP = ("代表者：", "代表者:")
 
 def _fix_signature_newlines(text: str) -> str:
-    """署名欄の甲・乙行が同一段落に結合されないよう、前後に空行を挿入する。"""
+    """署名欄の甲・乙・代表者行が同一段落に結合されないよう空行を調整する。
+    フォーマット: 甲：{名称} → 代表者：＿＿＿ → [空行] → 乙：{名称} → 代表者：＿＿＿
+    """
     lines = text.split("\n")
     result: list[str] = []
     for i, line in enumerate(lines):
         stripped = line.strip()
-        is_sig = any(stripped.startswith(s) for s in _SIG_STARTERS)
-        if is_sig:
+        is_party = any(stripped.startswith(s) for s in _SIG_STARTERS)
+        is_rep   = any(stripped.startswith(s) for s in _SIG_REP)
+
+        if is_party:
+            # 甲・乙行の前には必ず空行
             if result and result[-1].strip() != "":
                 result.append("")
             result.append(line)
+            # 次行が代表者行でもそれ以外でも空行は入れない（代表者が直後に来るため）
+        elif is_rep:
+            # 代表者行は前の行が甲・乙行なら空行なしで続ける
+            # 前行が空行でなく、かつ甲/乙行でもない場合のみ空行を挿入
+            prev = result[-1].strip() if result else ""
+            if prev and not any(prev.startswith(s) for s in _SIG_STARTERS):
+                result.append("")
+            result.append(line)
+            # 代表者行の後には空行（次の甲/乙ブロックとの区切り）
             if i + 1 < len(lines) and lines[i + 1].strip() != "":
                 result.append("")
         else:
